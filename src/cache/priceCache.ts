@@ -15,7 +15,7 @@
 
 import { createClient } from "redis"
 import type { CabinClass } from "@prisma/client"
-import type { FetchPriceParams, PriceFetchResult } from "../services/amadeusService"
+import type { FetchPriceParams, PriceFetchResult } from "../services/searchApiService"
 
 const CACHE_TTL_SECONDS = 120  // 2 minutos
 

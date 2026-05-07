@@ -1,17 +1,34 @@
 import admin from "firebase-admin"
 
-// Initialize once at module load
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-    }),
-  })
-}
+let warnedMissingFirebaseConfig = false
 
-const messaging = admin.messaging()
+function getMessaging() {
+  const projectId = process.env.FIREBASE_PROJECT_ID
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")
+
+  if (!projectId || !clientEmail || !privateKey) {
+    if (!warnedMissingFirebaseConfig) {
+      console.warn(
+        "[FCM] Firebase credentials are missing. Push notifications are disabled until FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY are set."
+      )
+      warnedMissingFirebaseConfig = true
+    }
+    return null
+  }
+
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        privateKey,
+      }),
+    })
+  }
+
+  return admin.messaging()
+}
 
 interface PushPayload {
   token: string
@@ -22,6 +39,11 @@ interface PushPayload {
 
 export async function sendPushNotification(payload: PushPayload) {
   try {
+    const messaging = getMessaging()
+    if (!messaging) {
+      return { success: false, error: "Firebase is not configured" }
+    }
+
     const message: admin.messaging.Message = {
       token: payload.token,
       notification: {
@@ -29,7 +51,6 @@ export async function sendPushNotification(payload: PushPayload) {
         body: payload.body,
       },
       data: payload.data ?? {},
-      // Chrome extension specific config
       webpush: {
         notification: {
           title: payload.title,
@@ -51,15 +72,14 @@ export async function sendPushNotification(payload: PushPayload) {
     }
 
     const response = await messaging.send(message)
-    console.log(`[FCM] Notification sent — message ID: ${response}`)
+    console.log(`[FCM] Notification sent - message ID: ${response}`)
     return { success: true, messageId: response }
   } catch (err: any) {
-    // Handle stale/invalid tokens gracefully
     if (
       err.code === "messaging/registration-token-not-registered" ||
       err.code === "messaging/invalid-registration-token"
     ) {
-      console.warn(`[FCM] Invalid token — cleaning up: ${payload.token.slice(0, 20)}…`)
+      console.warn(`[FCM] Invalid token - cleaning up: ${payload.token.slice(0, 20)}...`)
       await invalidateToken(payload.token)
     } else {
       console.error("[FCM] Send failed:", err)
@@ -76,13 +96,17 @@ async function invalidateToken(token: string) {
   })
 }
 
-// Batch notifications (for premium "deals of the week" digest)
 export async function sendBatchNotification(
   tokens: string[],
   title: string,
   body: string
 ) {
   if (tokens.length === 0) return
+
+  const messaging = getMessaging()
+  if (!messaging) {
+    return { success: false, error: "Firebase is not configured" }
+  }
 
   const messages: admin.messaging.MulticastMessage = {
     tokens,
