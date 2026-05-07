@@ -577,8 +577,8 @@ export const clientPageHtml = String.raw`<!doctype html>
           '</div>',
           '</div>',
           '<div class="actions">',
-          '<button class="ghost" type="button" onclick="checkPrice(\\'' + watch.id + '\\')">Check price</button>',
-          '<button class="ghost" type="button" onclick="deleteWatch(\\'' + watch.id + '\\')">Delete</button>',
+          '<button class="ghost" type="button" data-action="check-price" data-watch-id="' + escapeHtml(watch.id) + '">Check price</button>',
+          '<button class="ghost" type="button" data-action="delete-watch" data-watch-id="' + escapeHtml(watch.id) + '">Delete</button>',
           '</div>',
           '</div>',
           '<code>' + escapeHtml(watch.id) + '</code>',
@@ -619,9 +619,14 @@ export const clientPageHtml = String.raw`<!doctype html>
       document.getElementById("watchForm").addEventListener("submit", createWatch);
       document.getElementById("refreshButton").addEventListener("click", loadWatches);
       document.getElementById("reloadButton").addEventListener("click", loadWatches);
+      watchList.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        const id = button.dataset.watchId;
+        if (button.dataset.action === "check-price") checkPrice(id);
+        if (button.dataset.action === "delete-watch") deleteWatch(id);
+      });
 
-      window.deleteWatch = deleteWatch;
-      window.checkPrice = checkPrice;
       updateAuthUi();
       loadWatches();
     </script>
