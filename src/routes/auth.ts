@@ -6,57 +6,67 @@ const LoginSchema = z.object({
   googleToken: z.string().min(1),
 })
 
-export async function authRoutes(server: FastifyInstance) {
-  // POST /v1/auth/google
-  server.post("/google", async (request, reply) => {
-    const { googleToken } = LoginSchema.parse(request.body)
+function normalizeGoogleToken(token: string) {
+  return token.trim().replace(/^Bearer\s+/i, "")
+}
 
-    // Valida token com Google
-    const googleRes = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?access_token=${googleToken}`
-    )
+function googleTokenInfoUrl(token: string) {
+  const params = new URLSearchParams()
+  const tokenParam = token.split(".").length === 3 ? "id_token" : "access_token"
+  params.set(tokenParam, token)
+  return `https://oauth2.googleapis.com/tokeninfo?${params.toString()}`
+}
+
+export async function authRoutes(server: FastifyInstance) {
+  server.post("/google", async (request, reply) => {
+    const { googleToken: rawGoogleToken } = LoginSchema.parse(request.body)
+    const googleToken = normalizeGoogleToken(rawGoogleToken)
+
+    const googleRes = await fetch(googleTokenInfoUrl(googleToken))
 
     if (!googleRes.ok) {
-      return reply.code(401).send({ error: "Token Google inválido" })
+      return reply.code(401).send({
+        error:
+          "Google token was rejected. Use a fresh access_token from OAuth Playground with userinfo.email and userinfo.profile scopes.",
+      })
     }
 
     const googleData = await googleRes.json()
     const { sub: googleId, email, name } = googleData
 
     if (!googleId || !email) {
-      return reply.code(401).send({ error: "Dados insuficientes do Google" })
+      return reply.code(401).send({
+        error:
+          "Google token is valid, but it did not include email/profile data. Re-authorize with userinfo.email and userinfo.profile scopes.",
+      })
     }
 
-    // Upsert do usuário
     const user = await prisma.user.upsert({
-      where:  { googleId },
+      where: { googleId },
       create: { googleId, email, name },
       update: { email, name },
     })
 
-    // Gera JWT
     const authToken = server.jwt.sign(
       { sub: user.id, email: user.email },
       { expiresIn: "30d" }
     )
 
-    // Salva sessão
     await prisma.session.create({
       data: {
-        userId:    user.id,
-        token:     authToken,
+        userId: user.id,
+        token: authToken,
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       },
     })
 
     return {
-      userId:    user.id,
+      userId: user.id,
       authToken,
       isPremium: user.isPremium,
     }
   })
 
-  // POST /v1/auth/logout
   server.post(
     "/logout",
     { onRequest: [server.authenticate] },

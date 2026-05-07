@@ -292,7 +292,7 @@ export const clientPageHtml = String.raw`<!doctype html>
         <section class="panel stack" aria-labelledby="loginTitle">
           <div>
             <h2 id="loginTitle">Google Login</h2>
-            <p>Paste a temporary Google access token from OAuth Playground.</p>
+            <p>Paste the access_token, id_token, Bearer token, or token JSON from OAuth Playground.</p>
           </div>
           <label>
             Google access token
@@ -446,10 +446,34 @@ export const clientPageHtml = String.raw`<!doctype html>
         return data;
       }
 
+      function extractGoogleToken(rawValue) {
+        const raw = rawValue.trim();
+        if (!raw) return "";
+
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed.access_token) return String(parsed.access_token).trim();
+          if (parsed.id_token) return String(parsed.id_token).trim();
+          if (parsed.googleToken) return String(parsed.googleToken).trim();
+          if (parsed.token) return String(parsed.token).trim();
+        } catch {}
+
+        const jsonTokenMatch = raw.match(/"(access_token|id_token)"\s*:\s*"([^"]+)"/i);
+        if (jsonTokenMatch) return jsonTokenMatch[2].trim();
+
+        const keyValueMatch = raw.match(/\b(access_token|id_token)\b\s*[:=]\s*["']?([^"',\s}]+)/i);
+        if (keyValueMatch) return keyValueMatch[2].trim();
+
+        const bearerMatch = raw.match(/^Bearer\s+(.+)$/i);
+        if (bearerMatch) return bearerMatch[1].trim();
+
+        return raw.replace(/^["']|["']$/g, "").trim();
+      }
+
       async function login() {
-        const token = googleToken.value.trim();
+        const token = extractGoogleToken(googleToken.value);
         if (!token) {
-          setNotice(loginNotice, "Paste a Google access token first.", "error");
+          setNotice(loginNotice, "Paste a Google token first.", "error");
           return;
         }
 
