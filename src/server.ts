@@ -7,6 +7,7 @@ import { watchRoutes } from "./routes/watches"
 import { priceRoutes } from "./routes/prices"
 import { notificationRoutes } from "./routes/notifications"
 import { startScheduler } from "./scheduler/pricePoller"
+import { clientPageHtml } from "./clientPage"
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim()
@@ -43,6 +44,10 @@ async function buildServer() {
   await server.register(watchRoutes, { prefix: "/v1/watches" })
   await server.register(priceRoutes, { prefix: "/v1/prices" })
   await server.register(notificationRoutes, { prefix: "/v1/notifications" })
+
+  server.get("/", async (_, reply) => {
+    reply.type("text/html; charset=utf-8").send(clientPageHtml)
+  })
 
   server.get("/health", () => ({ status: "ok", ts: new Date().toISOString() }))
 
